@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Teacher Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            background: #f0f0f0;
+            color: #111;
+            padding: 20px;
+        }
+
+        header {
+            background: #3f51b5;
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 8px;
+        }
+
+        .card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        input,
+        textarea,
+        select {
+            display: block;
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            width: 100%;
+        }
+
+        .btn {
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 8px 12px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 4px;
+        }
+
+        .btn.primary {
+            background: #3f51b5;
+            color: white;
+        }
+
+        .btn.secondary {
+            background: #7986cb;
+            color: white;
+        }
+
+        .question {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: #fafafa;
+            position: relative;
+        }
+
+        .test-item {
+            border-bottom: 1px solid #ddd;
+            padding: 8px 0;
+        }
+
+        .test-item span {
+            display: inline-block;
+            margin-right: 12px;
+        }
+
+        .delete-question {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #e53935;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <header>🧑‍🏫 Teacher Panel</header>
+
+    <div class="card">
+        <button class="btn primary" onclick="showTestForm()">➕ New Test</button>
+
+        <div id="testList"></div>
+    </div>
+
+    <div class="card" id="testForm" style="display:none;">
+        <h2>Create/Edit Test</h2>
+        <input id="testTitle" placeholder="Test Title" />
+        <textarea id="testDescription" placeholder="Description (optional)"></textarea>
+        <input id="testDuration" type="number" placeholder="Duration (minutes)" />
+        <label>Publish At: <input id="publishAt" type="datetime-local" /></label>
+        <label>Expire At: <input id="expireAt" type="datetime-local" /></label>
+        <select id="accessMode">
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+        </select>
+        <input id="generatedCode" placeholder="Generated Test Code" readonly />
+        <button class="btn primary" onclick="generateTestCode()">Generate Code</button>
+        <button class="btn secondary" onclick="copyCode()">📋 Copy Code</button>
+        <button class="btn secondary" onclick="addQuestion()">Add Question</button>
+        <div id="questionList"></div>
+        <button class="btn secondary" onclick="exportPDF()">📄 Export to PDF</button>
+        <button class="btn primary" onclick="saveTest()">💾 Save Test</button>
+        <div id="saveStatus"></div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtyN8-Xl2EFdfRqXKvtTwbhlAu_oqDGaA",
+            authDomain: "test-4d502.firebaseapp.com",
+            projectId: "test-4d502",
+            storageBucket: "test-4d502.appspot.com",
+            messagingSenderId: "787828834403",
+            appId: "1:787828834403:web:ba9791170e2b6c5f6df856"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        let questions = [];
+
+        function showTestForm() {
+            document.getElementById("testForm").style.display = "block";
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        function generateTestCode() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code = 'TEST-';
+            for (let i = 0; i < 5; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            document.getElementById("generatedCode").value = code;
+        }
+
+        function copyCode() {
+            const code = document.getElementById("generatedCode").value;
+            navigator.clipboard.writeText(code).then(() => {
+                alert("✅ Code copied to clipboard!");
+            });
+        }
+
+        function addQuestion() {
+            const index = questions.length;
+            questions.push(index);
+            const container = document.createElement("div");
+            container.className = "question";
+            container.id = `question_${index}`;
+            container.innerHTML = `
+        <button class="delete-question" onclick="deleteQuestion(${index})">✖</button>
+        <strong>Question ${index + 1}</strong>
+        <textarea placeholder="Question text" id="q${index}_text"></textarea>
+        <select id="q${index}_type" onchange="toggleOptions(${index})">
+          <option value="mcq">MCQ</option>
+          <option value="text">Text</option>
+        </select>
+        <div id="q${index}_options">
+          <input placeholder="Option A" id="q${index}_opt0" />
+          <input placeholder="Option B" id="q${index}_opt1" />
+          <input placeholder="Option C" id="q${index}_opt2" />
+          <input placeholder="Option D" id="q${index}_opt3" />
+        </div>
+        <input placeholder="Correct Answer" id="q${index}_answer" />
+        <input type="number" placeholder="Marks" id="q${index}_marks" />
+      `;
+            document.getElementById("questionList").appendChild(container);
+        }
+
+        function deleteQuestion(index) {
+            const el = document.getElementById(`question_${index}`);
+            if (el) el.remove();
+            questions = questions.filter(i => i !== index);
+        }
+
+        function toggleOptions(index) {
+            const type = document.getElementById(`q${index}_type`).value;
+            const optDiv = document.getElementById(`q${index}_options`);
+            optDiv.style.display = type === "mcq" ? "block" : "none";
+        }
+
+        async function saveTest() {
+            const title = document.getElementById("testTitle").value.trim();
+            const description = document.getElementById("testDescription").value.trim();
+            const duration = parseInt(document.getElementById("testDuration").value);
+            const validUntil = document.getElementById("validUntil").value;
+            const publishAt = document.getElementById("publishAt").value;
+            const expireAt = document.getElementById("expireAt").value;
+            const code = document.getElementById("generatedCode").value.trim();
+            const accessMode = document.getElementById("accessMode").value;
+
+            if (!title || !duration || !code || !publishAt || !expireAt) {
+                document.getElementById("saveStatus").textContent = "Please fill all required fields and generate code.";
+                return;
+            }
+
+            const qList = questions.map(i => {
+                const q = {
+                    text: document.getElementById(`q${i}_text`).value.trim(),
+                    type: document.getElementById(`q${i}_type`).value,
+                    answer: document.getElementById(`q${i}_answer`).value.trim(),
+                    marks: parseInt(document.getElementById(`q${i}_marks`).value) || 1
+                };
+                if (q.type === "mcq") {
+                    q.options = [
+                        document.getElementById(`q${i}_opt0`).value.trim(),
+                        document.getElementById(`q${i}_opt1`).value.trim(),
+                        document.getElementById(`q${i}_opt2`).value.trim(),
+                        document.getElementById(`q${i}_opt3`).value.trim()
+                    ];
+                }
+                return q;
+            });
+
+            await db.collection("tests").doc(code).set({
+                title, description, duration, validUntil, questions: qList,
+                createdAt: new Date().toISOString()
+            });
+
+            document.getElementById("saveStatus").textContent = "✅ Test saved with code: " + code;
+            resetForm();
+            loadTests();
+        }
+
+        function resetForm() {
+            document.getElementById("testTitle").value = "";
+            document.getElementById("testDescription").value = "";
+            document.getElementById("testDuration").value = "";
+            document.getElementById("validUntil").value = "";
+            document.getElementById("publishAt").value = "";
+            document.getElementById("expireAt").value = "";
+            document.getElementById("generatedCode").value = "";
+            document.getElementById("accessMode").value = "private";
+            document.getElementById("questionList").innerHTML = "";
+            questions = [];
+        }
+
+        async function loadTests(filterToday = false) {
+            const list = document.getElementById("testList");
+            list.innerHTML = "<h3>📚 All Created Tests</h3>";
+            const now = new Date().toISOString();
+            const snapshot = await db.collection("tests")
+                .where("createdAt", "<=", now)
+                .orderBy("createdAt", "desc")
+                .get();
+
+            const today = now.slice(0, 10);
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const createdDate = data.createdAt?.slice(0, 10);
+                if (filterToday && createdDate !== today) return;
+
+                const published = data.resultsPublished === true;
+
+                const div = document.createElement("div");
+                div.className = "test-item";
+                div.innerHTML = `
+          <span><strong>${data.title}</strong></span>
+          <span>🆔 ${doc.id}</span>
+          <span>⏱️ ${data.duration} min</span>
+          <span>${published ? "📤 Published" : "📥 Hidden"}</span>
+          <span>🌐 ${data.accessMode}</span>
+          <span>📅 ${createdDate}</span>
+          <button class="btn secondary" onclick="editTest('${doc.id}')">📝 Edit</button>
+          <button class="btn secondary" onclick="deleteTest('${doc.id}')">🗑️ Delete</button>
+          <button class="btn secondary" onclick="publishResults('${doc.id}')" ${published ? "disabled" : ""}>
+            📤 Publish Results
+          </button>
+        `;
+                list.appendChild(div);
+            });
+        }
+
+        function filterToday() {
+            loadTests(true);
+        }
+
+        async function editTest(code) {
+            const docSnap = await db.collection("tests").doc(code).get();
+            if (!docSnap.exists) return alert("Test not found");
+
+            const data = docSnap.data();
+            questions = [];
+
+            document.getElementById("testTitle").value = data.title;
+            document.getElementById("testDescription").value = data.description;
+            document.getElementById("testDuration").value = data.duration;
+            document.getElementById("validUntil").value = data.validUntil;
+            document.getElementById("publishAt").value = data.publishAt;
+            document.getElementById("expireAt").value = data.expireAt;
+            document.getElementById("generatedCode").value = code;
+            document.getElementById("accessMode").value = data.accessMode || "private";
+            document.getElementById("questionList").innerHTML = "";
+
+            data.questions.forEach((q, i) => {
+                addQuestion();
+                document.getElementById(`q${i}_text`).value = q.text;
+                document.getElementById(`q${i}_type`).value = q.type;
+                document.getElementById(`q${i}_answer`).value = q.answer;
+                document.getElementById(`q${i}_marks`).value = q.marks;
+                toggleOptions(i);
+                if (q.type === "mcq") {
+                    document.getElementById(`q${i}_opt0`).value = q.options[0];
+                    document.getElementById(`q${i}_opt1`).value = q.options[1];
+                    document.getElementById(`q${i}_opt2`).value = q.options[2];
+                    document.getElementById(`q${i}_opt3`).value = q.options[3];
+                }
+            });
+
+            showTestForm();
+        }
+
+        async function deleteTest(code) {
+            if (!confirm("Are you sure you want to delete this test?")) return;
+            await db.collection("tests").doc(code).delete();
+            loadTests();
+        }
+
+        async function publishResults(code) {
+            await db.collection("tests").doc(code).update({ resultsPublished: true });
+            alert("✅ Results published for test: " + code);
+            loadTests();
+        }
+
+        async function exportPDF() {
+            const title = document.getElementById("testTitle").value.trim();
+            const doc = new jspdf.jsPDF();
+            doc.setFontSize(16);
+            doc.text("Test: " + title, 10, 20);
+            questions.forEach((i, idx) => {
+                const qText = document.getElementById(`q${i}_text`).value.trim();
+                doc.setFontSize(12);
+                doc.text(`${idx + 1}. ${qText}`, 10, 30 + idx * 10);
+            });
+            doc.save(`${title || "test"}.pdf`);
+        }
+
+        window.onload = () => {
+            loadTests();
+        };
+    </script>
+</body>
+
+</html>

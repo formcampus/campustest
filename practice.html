@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Practice Mode – Published Tests</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            background: #f9f9f9;
+            color: #111;
+            padding: 20px;
+        }
+
+        header {
+            background: #673ab7;
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 8px;
+        }
+
+        .card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        input {
+            display: block;
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            width: 100%;
+        }
+
+        .btn {
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 8px 12px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 4px;
+        }
+
+        .btn.primary {
+            background: #512da8;
+            color: white;
+        }
+
+        .btn.secondary {
+            background: #9575cd;
+            color: white;
+        }
+
+        .test-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            background: #fff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .test-card:hover {
+            background: #ede7f6;
+            transform: translateY(-2px);
+        }
+
+        .question {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: #f0f0f0;
+        }
+
+        .locked {
+            color: red;
+            font-weight: bold;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .filter-bar input,
+        .filter-bar select {
+            flex: 1;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #bbb;
+        }
+
+        .test-details {
+            display: none;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            margin-top: 8px;
+        }
+
+        .show {
+            display: block;
+        }
+
+        .correct {
+            background: #c8e6c9;
+        }
+
+        .wrong {
+            background: #ffcdd2;
+        }
+    </style>
+</head>
+
+<body>
+    <header>🧠 Practice Mode – Published Tests</header>
+
+    <div class="card">
+        <h2>Enter Your Details</h2>
+        <input id="studentName" placeholder="Your Name" />
+        <input id="studentId" placeholder="Roll Number / ID" />
+        <button class="btn primary" onclick="loadPracticeTests()">Load Practice Tests</button>
+        <div id="loadError" style="color:red;"></div>
+    </div>
+
+    <div class="card" id="testListCard">
+        <h2>Available Practice Tests</h2>
+
+        <div class="filter-bar">
+            <input id="searchBox" placeholder="🔍 Search test by title or code..." oninput="applyFilter()" />
+            <select id="filterMode" onchange="applyFilter()">
+                <option value="all">All Results</option>
+                <option value="public">Public Only</option>
+                <option value="private">Private Only</option>
+            </select>
+        </div>
+
+        <div id="testList"></div>
+    </div>
+
+    <div class="card" id="practiceSection" style="display:none;">
+        <h2 id="testTitle"></h2>
+        <p id="testDescription"></p>
+        <div id="questionArea"></div>
+        <button class="btn primary" onclick="submitPractice()">Finish Practice</button>
+        <div id="scoreArea"></div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtyN8-Xl2EFdfRqXKvtTwbhlAu_oqDGaA",
+            authDomain: "test-4d502.firebaseapp.com",
+            projectId: "test-4d502",
+            storageBucket: "test-4d502.appspot.com",
+            messagingSenderId: "787828834403",
+            appId: "1:787828834403:web:ba9791170e2b6c5f6df856"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let currentTest = null;
+
+        async function loadPracticeTests() {
+            const name = document.getElementById("studentName").value.trim();
+            const sid = document.getElementById("studentId").value.trim();
+            if (!name || !sid) {
+                document.getElementById("loadError").textContent = "Please enter your name and ID.";
+                return;
+            }
+            document.getElementById("loadError").textContent = "";
+
+            const snap = await db.collection("tests").get();
+            const container = document.getElementById("testList");
+            container.innerHTML = "";
+
+            const modeFilter = document.getElementById("filterMode")?.value || "all";
+            const search = document.getElementById("searchBox")?.value.toLowerCase() || "";
+
+            snap.docs.forEach(doc => {
+                const t = doc.data();
+                const id = doc.id;
+
+                // Only tests whose results are published
+                if (!t.resultsPublished) return;
+
+                // Filter by access mode
+                if (modeFilter !== "all" && t.accessMode !== modeFilter) return;
+
+                // Search by title or code
+                if (search && !t.title.toLowerCase().includes(search) && !id.toLowerCase().includes(search)) return;
+
+                const div = document.createElement("div");
+                div.className = "test-card";
+                div.innerHTML = `
+          <h3>${t.title}</h3>
+          <p><strong>Access:</strong> ${t.accessMode || "private"}</p>
+          <p><strong>Total Questions:</strong> ${t.questions?.length || 0}</p>
+          <p><strong>Total Marks:</strong> ${(t.questions || []).reduce((sum, q) => sum + (q.marks || 0), 0)}</p>
+          <p><strong>Result Status:</strong> ✅ Published</p>
+          <button class="btn secondary" onclick="startPractice('${id}')">🧩 Practice Now</button>
+          <button class="btn secondary" onclick="toggleDetails('${id}')">📄 View Details</button>
+          <div class="test-details" id="details_${id}">
+            <p>${t.description || "No description provided."}</p>
+            ${(t.questions || []).map((q, i) => `
+              <div class="question"><strong>Q${i + 1}:</strong> ${q.text}</div>
+            `).join("")}
+          </div>
+        `;
+                container.appendChild(div);
+            });
+        }
+
+        function applyFilter() {
+            loadPracticeTests();
+        }
+
+        function toggleDetails(id) {
+            const el = document.getElementById("details_" + id);
+            if (!el) return;
+            el.classList.toggle("show");
+        }
+
+        async function startPractice(id) {
+            const doc = await db.collection("tests").doc(id).get();
+            const t = doc.data();
+            currentTest = { id, ...t };
+
+            document.getElementById("testListCard").style.display = "none";
+            document.getElementById("practiceSection").style.display = "block";
+            document.getElementById("testTitle").textContent = t.title;
+            document.getElementById("testDescription").textContent = t.description || "";
+
+            const qArea = document.getElementById("questionArea");
+            qArea.innerHTML = "";
+
+            (t.questions || []).forEach((q, i) => {
+                const div = document.createElement("div");
+                div.className = "question";
+                div.innerHTML = `<strong>Q${i + 1} (${q.marks} marks):</strong> ${q.text}<br>`;
+                if (q.type === "mcq" && q.options) {
+                    q.options.forEach(opt => {
+                        div.innerHTML += `<label><input type="radio" name="q${i}" value="${opt}"> ${opt}</label><br>`;
+                    });
+                } else {
+                    div.innerHTML += `<input type="text" name="q${i}" placeholder="Your answer" />`;
+                }
+                qArea.appendChild(div);
+            });
+            document.getElementById("scoreArea").innerHTML = "";
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        function submitPractice() {
+            const qList = currentTest.questions || [];
+            let score = 0;
+            const qArea = document.getElementById("questionArea");
+            const elements = qArea.querySelectorAll(".question");
+
+            qList.forEach((q, i) => {
+                const el = elements[i];
+                let val = "";
+                if (q.type === "mcq") {
+                    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+                    val = selected ? selected.value.trim() : "";
+                } else {
+                    const input = document.querySelector(`input[name="q${i}"]`);
+                    val = input ? input.value.trim() : "";
+                }
+
+                if (val.toLowerCase() === q.answer.toLowerCase()) {
+                    score += q.marks || 1;
+                    el.classList.add("correct");
+                } else {
+                    el.classList.add("wrong");
+                    el.innerHTML += `<br><em>Correct answer:</em> ${q.answer}`;
+                }
+            });
+
+            const totalMarks = qList.reduce((s, q) => s + (q.marks || 1), 0);
+            document.getElementById("scoreArea").innerHTML =
+                `<h3>✅ Practice Complete!</h3><p>Your Score: ${score} / ${totalMarks}</p>
+        <button class="btn secondary" onclick="restart()">🔙 Back to Test List</button>`;
+        }
+
+        function restart() {
+            document.getElementById("practiceSection").style.display = "none";
+            document.getElementById("testListCard").style.display = "block";
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        window.onload = () => {
+            document.getElementById("filterMode").value = "all";
+        };
+    </script>
+</body>
+
+</html>

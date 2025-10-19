@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>All Test Results</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            background: #f9f9f9;
+            color: #111;
+            padding: 20px;
+        }
+
+        header {
+            background: #0b6fa4;
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 8px;
+        }
+
+        .card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        input {
+            display: block;
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            width: 100%;
+        }
+
+        .btn {
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 8px 12px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 4px;
+        }
+
+        .btn.primary {
+            background: #007acc;
+            color: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+
+        th {
+            background: #e0e0e0;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        .green {
+            color: green;
+        }
+
+        .red {
+            color: red;
+        }
+
+        .gray {
+            color: gray;
+        }
+
+        .result {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: #f0f8ff;
+        }
+    </style>
+</head>
+
+<body>
+    <header>📊 All Test Results</header>
+
+    <div class="card">
+        <h2>Enter Your Roll Number</h2>
+        <input id="studentId" placeholder="Roll Number / ID" />
+        <button class="btn primary" onclick="loadResults()">Load My Results</button>
+        <div id="loadError" style="color:red;"></div>
+    </div>
+
+    <div class="card" id="resultsSection" style="display:none;">
+        <h2>Test History</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Test Title</th>
+                    <th>Status</th>
+                    <th>Result</th>
+                    <th>Score</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+        </table>
+        <div id="detailsSection"></div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtyN8-Xl2EFdfRqXKvtTwbhlAu_oqDGaA",
+            authDomain: "test-4d502.firebaseapp.com",
+            projectId: "test-4d502",
+            storageBucket: "test-4d502.appspot.com",
+            messagingSenderId: "787828834403",
+            appId: "1:787828834403:web:ba9791170e2b6c5f6df856"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let allTests = {};
+        let allResponses = {};
+
+        async function loadResults() {
+            const sid = document.getElementById("studentId").value.trim();
+            if (!sid) {
+                document.getElementById("loadError").textContent = "Please enter your roll number.";
+                return;
+            }
+            document.getElementById("loadError").textContent = "";
+
+            const testSnap = await db.collection("tests").get();
+            const responseSnap = await db.collection("responses").where("studentId", "==", sid).get();
+
+            allTests = {};
+            allResponses = {};
+            responseSnap.docs.forEach(doc => {
+                const data = doc.data();
+                allResponses[data.testId] = data;
+            });
+
+            const table = document.getElementById("resultsTable");
+            table.innerHTML = "";
+
+            testSnap.docs.forEach(doc => {
+                const test = doc.data();
+                const testId = doc.id;
+                allTests[testId] = test;
+                const response = allResponses[testId];
+                const attended = response ? "🟢 Attended" : "🔴 Not Attended";
+                const resultStatus = test.resultsPublished ? "✅ Published" : "❌ Not Yet";
+                let score = "—";
+
+                if (response && test.resultsPublished) {
+                    const answers = response.answers || {};
+                    const questions = test.questions || [];
+                    let total = 0, scored = 0;
+                    questions.forEach((q, i) => {
+                        const correct = q.answer?.trim().toLowerCase();
+                        const given = (answers["q" + i] || "").trim().toLowerCase();
+                        total += q.marks || 0;
+                        if (correct === given) scored += q.marks || 0;
+                    });
+                    score = `${scored}/${total}`;
+                }
+
+                const row = document.createElement("tr");
+                row.innerHTML = `
+          <td>${test.title}</td>
+          <td class="status ${attended.includes("Attended") ? 'green' : 'red'}">${attended}</td>
+          <td class="status ${resultStatus.includes("Published") ? 'green' : 'gray'}">${resultStatus}</td>
+          <td>${score}</td>
+          <td><button class="btn" onclick="viewDetails('${testId}')">View</button></td>
+        `;
+                table.appendChild(row);
+            });
+
+            document.getElementById("resultsSection").style.display = "block";
+        }
+
+        function viewDetails(testId) {
+            const test = allTests[testId];
+            const response = allResponses[testId];
+            const container = document.getElementById("detailsSection");
+            container.innerHTML = `<h3>${test.title}</h3>`;
+
+            if (!response) {
+                container.innerHTML += `<p class="red">You did not attend this test.</p>`;
+                return;
+            }
+
+            if (!test.resultsPublished) {
+                container.innerHTML += `<p class="gray">Results are not yet published.</p>`;
+                return;
+            }
+
+            const answers = response.answers || {};
+            const questions = test.questions || [];
+            questions.forEach((q, i) => {
+                const studentAnswer = answers["q" + i] || "";
+                const correctAnswer = q.answer || "";
+                const isCorrect = studentAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+                const div = document.createElement("div");
+                div.className = "result";
+                div.innerHTML = `
+          <strong>Q${i + 1} (${q.marks} marks):</strong> ${q.text}<br>
+          <span><strong>Your Answer:</strong> ${studentAnswer}</span><br>
+          <span><strong>Correct Answer:</strong> ${correctAnswer}</span><br>
+          <span class="${isCorrect ? 'green' : 'red'}"><strong>${isCorrect ? '✔ Correct' : '✘ Incorrect'}</strong></span>
+        `;
+                container.appendChild(div);
+            });
+
+            container.scrollIntoView({ behavior: "smooth" });
+        }
+    </script>
+</body>
+
+</html>
